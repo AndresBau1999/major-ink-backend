@@ -41,7 +41,10 @@ if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
     host: process.env.SMTP_HOST,
     port: Number(process.env.SMTP_PORT) || 587,
     secure: Number(process.env.SMTP_PORT) === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS }
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    connectionTimeout: 8000, // fail fast instead of hanging on a bad host/port
+    greetingTimeout: 8000,
+    socketTimeout: 8000
   });
 }
 
@@ -124,13 +127,15 @@ app.post('/api/bookings', bookingLimiter, async (req, res) => {
   all.unshift(booking);
   fs.writeFileSync(DATA_FILE, JSON.stringify(all, null, 2));
 
-  try {
-    await notifyShop(booking);
-  } catch (err) {
-    console.error('Email send failed (booking was still saved):', err.message);
-  }
-
+  // Respond to the customer immediately once the booking is saved — don't
+  // make them wait on email, which can be slow or fail independently.
   res.json({ ok: true, id: booking.id });
+
+  // Fire the notification email in the background. If it fails, the
+  // booking is still safely saved above and visible via /api/bookings.
+  notifyShop(booking).catch((err) => {
+    console.error('Email send failed (booking was still saved):', err.message);
+  });
 });
 
 // Simple protected view for the shop to see submissions without email.
