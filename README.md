@@ -27,30 +27,37 @@ Server runs on `http://localhost:3000` by default (`PORT` in `.env`).
 In `major-ink-site/script.js`, `BOOKING_API_URL` is set to `/api/bookings`
 — a relative path. That works automatically if the website and this API
 end up served from the same domain. If they're hosted separately (e.g.
-website on Netlify, API on Render), change that line to the full API URL,
-like `https://major-ink-api.onrender.com/api/bookings`.
+website on Netlify, API on Railway), change that line to the full API URL,
+like `https://major-ink-backend-production.up.railway.app/api/bookings`.
 
-## Email setup
+## Email setup (via Resend)
 
-Fill in the `SMTP_*` variables in `.env`. Any SMTP provider works:
+Email is sent through [Resend](https://resend.com)'s HTTPS API rather than
+traditional SMTP. This matters if you're deploying to Railway: Railway
+blocks outbound SMTP (ports 25, 465, 587) on its Free, Trial, and Hobby
+plans, so a normal SMTP setup (Gmail, etc.) will silently time out there.
+An HTTPS API call like Resend's isn't affected by that restriction.
 
-- **Gmail**: use an [app password](https://myaccount.google.com/apppasswords)
-  (not your normal password), host `smtp.gmail.com`, port `587`
-- **A transactional email service** (SendGrid, Mailgun, Postmark, etc.) —
-  usually the more reliable choice for anything beyond low volume, since
-  Gmail can throttle or flag automated sending
+1. Sign up free at resend.com
+2. Go to **API Keys** and create one — copy it into `RESEND_API_KEY`
+3. Set `SHOP_NOTIFICATION_EMAIL` to whichever address should receive
+   booking alerts
+4. Leave `RESEND_FROM_EMAIL` as `onboarding@resend.com` to start — this
+   only works when sending **to the same email you signed up to Resend
+   with**. If you want to send to a different address, you'll need to
+   verify your own domain in Resend's dashboard first, then set
+   `RESEND_FROM_EMAIL` to something like `bookings@majorinkstudios.com`
 
-Until `SMTP_HOST`, `SMTP_USER`, and `SMTP_PASS` are all set, the server
-still validates and saves every booking — it just skips the email step
-and logs a note. Nothing is lost while credentials get sorted out.
+Until `RESEND_API_KEY` is set, the server still validates and saves every
+booking — it just skips the email step and logs a note. Nothing is lost
+while that gets set up.
 
 ## Deploying
 
 This needs to run somewhere with a persistent Node process — a static
 host like Netlify/GitHub Pages can serve the website, but not this API.
-Reasonable options:
 
-- **Render** or **Railway** — free/cheap tier, deploy straight from a
+- **Railway** or **Render** — free/cheap tier, deploy straight from a
   GitHub repo, set the env vars in their dashboard
 - **A small VPS** — more control, more setup
 

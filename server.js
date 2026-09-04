@@ -2,7 +2,6 @@ require('dotenv').config({ quiet: true }); // quiet: true suppresses dotenv's co
 const express = require('express');
 const path = require('path');
 const fs = require('fs');
-const nodemailer = require('nodemailer');
 const rateLimit = require('express-rate-limit');
 const cors = require('cors');
 
@@ -36,33 +35,27 @@ const bookingLimiter = rateLimit({
   message: { error: 'Too many requests from this device. Try again later.' }
 });
 
-// ---------- email transport ----------
-// Configure via .env — see .env.example. If SMTP vars are missing, the
+// ---------- email ----------
+// Sends via Resend's HTTPS API (https://resend.com) instead of raw SMTP —
+// Railway blocks outbound SMTP ports on Free/Trial/Hobby plans, but a
+// plain HTTPS request like this works everywhere with no plan restriction.
+// Configure via .env — see .env.example. If RESEND_API_KEY is missing, the
 // server still accepts and stores bookings, it just skips the email step
-// and logs a warning, so nothing is lost while you get credentials set up.
-let transporter = null;
-if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-  transporter = nodemailer.createTransport({
-    host: process.env.SMTP_HOST,
-    port: Number(process.env.SMTP_PORT) || 587,
-    secure: Number(process.env.SMTP_PORT) === 465,
-    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
-    connectionTimeout: 8000, // fail fast instead of hanging on a bad host/port
-    greetingTimeout: 8000,
-    socketTimeout: 8000
-  });
-}
-
+// and logs a warning, so nothing is lost while you get an API key set up.
 async function notifyShop(booking) {
-  if (!transporter) {
-    console.warn('SMTP not configured — skipping email notification. Booking was still saved.');
+  const apiKey = process.env.RESEND_API_KEY;
+  const to = process.env.SHOP_NOTIFICATION_EMAIL;
+  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.com';
+
+  if (!apiKey) {
+    console.warn('RESEND_API_KEY not set — skipping email notification. Booking was still saved.');
     return;
   }
-  const to = process.env.SHOP_NOTIFICATION_EMAIL;
   if (!to) {
     console.warn('SHOP_NOTIFICATION_EMAIL not set — skipping email notification.');
     return;
   }
+
   const lines = [
     `New booking request from ${booking.name}`,
     '',
@@ -77,13 +70,35 @@ async function notifyShop(booking) {
     '',
     `Submitted: ${booking.submittedAt}`
   ];
-  await transporter.sendMail({
-    from: process.env.SMTP_FROM || process.env.SMTP_USER,
-    to,
-    replyTo: booking.email,
-    subject: `New booking request — ${booking.name}`,
-    text: lines.join('\n')
-  });
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 8000);
+
+  let response;
+  try {
+    response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        from,
+        to,
+        reply_to: booking.email,
+        subject: `New booking request — ${booking.name}`,
+        text: lines.join('\n')
+      }),
+      signal: controller.signal
+    });
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => '');
+    throw new Error(`Resend API returned ${response.status}: ${body}`);
+  }
 }
 
 // ---------- validation ----------
