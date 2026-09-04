@@ -45,7 +45,7 @@ const bookingLimiter = rateLimit({
 async function notifyShop(booking) {
   const apiKey = process.env.RESEND_API_KEY;
   const to = process.env.SHOP_NOTIFICATION_EMAIL;
-  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.com';
+  const from = process.env.RESEND_FROM_EMAIL || 'onboarding@resend.dev';
 
   if (!apiKey) {
     console.warn('RESEND_API_KEY not set — skipping email notification. Booking was still saved.');
