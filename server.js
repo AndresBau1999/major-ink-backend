@@ -10,6 +10,11 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 const DATA_FILE = path.join(__dirname, 'data', 'bookings.json');
 
+// Railway (and most hosting platforms) sit behind a proxy, so the app
+// needs to trust the X-Forwarded-For header to correctly identify each
+// visitor's real IP — required for express-rate-limit to work properly.
+app.set('trust proxy', 1);
+
 // ---------- setup ----------
 // The website and this API will likely live on different domains
 // (e.g. Netlify for the site, Render for the API). ALLOWED_ORIGIN in
@@ -134,7 +139,7 @@ app.post('/api/bookings', bookingLimiter, async (req, res) => {
   // Fire the notification email in the background. If it fails, the
   // booking is still safely saved above and visible via /api/bookings.
   notifyShop(booking).catch((err) => {
-    console.error('Email send failed (booking was still saved):', err.message);
+    console.error('Email send failed (booking was still saved):', err.code || err.message, '-', err.message);
   });
 });
 
